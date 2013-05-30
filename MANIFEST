@@ -1,0 +1,14 @@
+Changes
+lib/Email/Stuffer.pm
+LICENSE
+Makefile.PL
+MANIFEST			This list of files
+README
+t/01_compile.t
+t/02_main.t
+t/03_singlepart.t
+t/04_alternative.t
+t/data/body.html
+t/data/paypal.gif
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)
