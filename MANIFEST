@@ -1,14 +1,19 @@
 Changes
-lib/Email/Stuffer.pm
 LICENSE
+MANIFEST
+META.json
+META.yml
 Makefile.PL
-MANIFEST			This list of files
 README
-t/01_compile.t
-t/02_main.t
-t/03_singlepart.t
-t/04_alternative.t
+dist.ini
+lib/Email/Stuffer.pm
+t/00-compile.t
+t/000-report-versions-tiny.t
+t/alternative.t
+t/basic.t
 t/data/body.html
 t/data/paypal.gif
-META.yml                                 Module YAML meta-data (added by MakeMaker)
-META.json                                Module JSON meta-data (added by MakeMaker)
+t/send-or-die.t
+t/singlepart.t
+xt/release/changes_has_content.t
+xt/release/pod-syntax.t

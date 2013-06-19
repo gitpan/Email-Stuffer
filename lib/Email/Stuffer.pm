@@ -1,8 +1,356 @@
+use strict;
+use warnings;
 package Email::Stuffer;
+# ABSTRACT: A more casual approach to creating and sending Email:: emails
+
+
+use 5.005;
+use strict;
+use Carp                   ();
+use File::Basename         ();
+use Params::Util           qw(_INSTANCE _INSTANCEDOES);
+use Email::MIME            ();
+use Email::MIME::Creator   ();
+use Email::Sender::Simple  ();
+use prefork 'File::Type';
+
+our $VERSION = '0.001';
+
+#####################################################################
+# Constructor and Accessors
+
+
+sub new {
+	my $class = ref $_[0] || $_[0];
+
+	my $self = bless {
+		parts      => [],
+		email      => Email::MIME->create(
+			header => [],
+			parts  => [],
+			),
+		}, $class;
+
+	$self;
+}
+
+sub _self {
+	my $either = shift;
+	ref($either) ? $either : $either->new;
+}
+
+
+sub header_names {
+	shift()->{email}->header_names;
+}
+
+sub headers {
+	shift()->{email}->header_names; ## This is now header_names, headers is depreciated
+}
+
+
+sub parts {
+	grep { defined $_ } @{shift()->{parts}};
+}
+
+
+
+
+
+#####################################################################
+# Header Methods
+
+
+sub header {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(ucfirst shift, shift) ? $self : undef;
+}
+
+
+sub to {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(To => shift) ? $self : undef;
+}
+
+
+sub from {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(From => shift) ? $self : undef;
+}
+
+
+sub cc {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(Cc => shift) ? $self : undef;
+}
+
+
+sub bcc {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(Bcc => shift) ? $self : undef;
+}
+
+
+sub subject {
+	my $self = shift()->_self;
+	$self->{email}->header_str_set(Subject => shift) ? $self : undef;
+}
+
+#####################################################################
+# Body and Attachments
+
+
+sub text_body {
+	my $self = shift()->_self;
+	my $body = defined $_[0] ? shift : return $self;
+	my %attr = (
+		# Defaults
+		content_type => 'text/plain',
+		charset      => 'utf-8',
+		encoding     => 'quoted-printable',
+		format       => 'flowed',
+		# Params overwrite them
+		@_,
+		);
+
+	# Create the part in the text slot
+	$self->{parts}->[0] = Email::MIME->create(
+		attributes => \%attr,
+		body_str   => $body,
+		);
+
+	$self;
+}
+
+
+sub html_body {
+	my $self = shift()->_self;
+	my $body = defined $_[0] ? shift : return $self;
+	my %attr = (
+		# Defaults
+		content_type => 'text/html',
+		charset      => 'utf-8',
+		encoding     => 'quoted-printable',
+		# Params overwrite them
+		@_,
+		);
+
+	# Create the part in the HTML slot
+	$self->{parts}->[1] = Email::MIME->create(
+		attributes => \%attr,
+		body_str   => $body,
+		);
+
+	$self;
+}
+
+
+sub attach {
+	my $self = shift()->_self;
+	my $body = defined $_[0] ? shift : return undef;
+	my %attr = (
+		# Cheap defaults
+		encoding => 'base64',
+		# Params overwrite them
+		@_,
+		);
+
+	# The more expensive defaults if needed
+	unless ( $attr{content_type} ) {
+		require File::Type;
+		$attr{content_type} = File::Type->checktype_contents($body);
+	}
+
+	### MORE?
+
+	# Determine the slot to put it at
+	my $slot = scalar @{$self->{parts}};
+	$slot = 3 if $slot < 3;
+
+	# Create the part in the attachment slot
+	$self->{parts}->[$slot] = Email::MIME->create(
+		attributes => \%attr,
+		body       => $body,
+		);
+
+	$self;
+}
+
+
+sub attach_file {
+	my $self = shift;
+  my $body_arg = shift;
+	my $name = undef;
+	my $body = undef;
+
+	# Support IO::All::File arguments
+	if ( Params::Util::_INSTANCE($body_arg, 'IO::All::File') ) {
+		$name = $body_arg->name;
+		$body = $body_arg->all;
+
+	# Support file names
+	} elsif ( defined $body_arg and -f $body_arg ) {
+		$name = $body_arg;
+		$body = _slurp( $body_arg ) or return undef;
+
+	# That's it
+	} else {
+		return undef;
+	}
+
+	# Clean the file name
+	$name = File::Basename::basename($name) or return undef;
+
+	# Now attach as normal
+	$self->attach( $body, name => $name, filename => $name, @_ );
+}
+
+# Provide a simple _slurp implementation
+sub _slurp {
+	my $file = shift;
+	local $/ = undef;
+	local *SLURP;
+	open( SLURP, "<$file" ) or return undef;
+	my $source = <SLURP>;
+	close( SLURP ) or return undef;
+	\$source;
+}
+
+
+sub transport {
+	my $self = shift;
+
+	if ( @_ ) {
+		# Change the transport
+		if ( _INSTANCEDOES($_[0], 'Email::Sender::Transport') ) {
+			$self->{transport} = shift;
+		} else {
+		  my ($moniker, @arg) = @_;
+		  my $class = $moniker =~ s/\A=//
+		            ? $moniker
+		            : "Email::Sender::Transport::$moniker";
+			my $transport = $class->new(@arg);
+			$self->{transport} = $transport;
+		}
+	}
+
+	$self;
+}
+
+
+
+
+
+#####################################################################
+# Output Methods
+
+
+sub email {
+	my $self  = shift;
+	my @parts = $self->parts;
+
+        ### Lyle Hopkins, code added to Fix single part, and multipart/alternative problems
+        if ( scalar( @{ $self->{parts} } ) >= 3 ) {
+                ## multipart/mixed
+                $self->{email}->parts_set( \@parts );
+        }
+        ## Check we actually have any parts
+        elsif ( scalar( @{ $self->{parts} } ) ) {
+                if ( _INSTANCE($parts[0], 'Email::MIME') && _INSTANCE($parts[1], 'Email::MIME') ) {
+                        ## multipart/alternate
+                        $self->{email}->header_set( 'Content-Type' => 'multipart/alternative' );
+                        $self->{email}->parts_set( \@parts );
+                }
+                ## As @parts is $self->parts without the blanks, we only need check $parts[0]
+                elsif ( _INSTANCE($parts[0], 'Email::MIME') ) {
+                        ## single part text/plain
+                        _transfer_headers( $self->{email}, $parts[0] );
+                        $self->{email} = $parts[0];
+                }
+        }
+
+	$self->{email};
+}
+
+# Support coercion to an Email::MIME
+sub __as_Email_MIME { shift()->email }
+
+# Quick any routine
+sub _any (&@) {
+        my $f = shift;
+        return if ! @_;
+        for (@_) {
+                return 1 if $f->();
+        }
+        return 0;
+}
+
+# header transfer from one object to another
+sub _transfer_headers {
+        # $_[0] = from, $_[1] = to
+        my @headers_move = $_[0]->header_names;
+        my @headers_skip = $_[1]->header_names;
+        foreach my $header_name (@headers_move) {
+                next if _any { $_ eq $header_name } @headers_skip;
+                my @values = $_[0]->header($header_name);
+                $_[1]->header_str_set( $header_name, @values );
+        }
+}
+
+
+sub as_string {
+	shift()->email->as_string;
+}
+
+
+sub send {
+	my $self = shift;
+	my $arg  = shift;
+	my $email = $self->email or return undef;
+
+	my $transport = $self->{transport};
+
+	Email::Sender::Simple->try_to_send(
+	  $email,
+	  {
+      ($transport ? (transport => $transport) : ()),
+      $arg ? %$arg : (),
+    },
+  );
+}
+
+
+sub send_or_die {
+	my $self = shift;
+	my $arg  = shift;
+	my $email = $self->email or return undef;
+
+	my $transport = $self->{transport};
+
+	Email::Sender::Simple->send(
+	  $email,
+	  {
+      ($transport ? (transport => $transport) : ()),
+      $arg ? %$arg : (),
+    },
+  );
+}
+
+
+
+1;
+
+__END__
+
+=pod
 
 =head1 NAME
 
 Email::Stuffer - A more casual approach to creating and sending Email:: emails
+
+=head1 VERSION
+
+version 0.003
 
 =head1 SYNOPSIS
 
@@ -32,8 +380,7 @@ Email::Stuffer - A more casual approach to creating and sending Email:: emails
                 ->to       ('santa@northpole.org'              )
                 ->bcc      ('bunbun@sluggy.com'                )
                 ->text_body($body                              )
-                ->attach   (io('dead_bunbun_faked.gif')->all,
-                            filename => 'dead_bunbun_proof.gif')
+                ->attach_file('dead_bunbun_faked.gif'		   )
                 ->send;
 
 =head1 DESCRIPTION
@@ -121,6 +468,117 @@ generate some stuff, and email it to somewhere, as conveniently as
 possible. DWIM, but do it as thinly as possible and use the solid
 Email:: modules underneath.
 
+=head1 METHODS
+
+=head2 new
+
+Creates a new, empty, Email::Stuffer object.
+
+=head2 header_names
+
+Returns, as a list, all of the headers currently set for the Email
+For backwards compatibility, this method can also be called as B[headers].
+
+=head2 parts
+
+Returns, as a list, the L<Email::MIME> parts for the Email
+
+=head2 header $header => $value
+
+Adds a single named header to the email. Note I said B<add> not set,
+so you can just keep shoving the headers on. But of course, if you
+want to use to overwrite a header, you're stuffed. Because B<this module
+is not for changing emails, just throwing stuff together and sending it.>
+
+=head2 to $address
+
+Adds a To: header to the email
+
+=head2 from $address
+
+Adds (yes ADDS, you only do it once) a From: header to the email
+
+=head2 cc $address
+
+Adds a Cc: header to the email
+
+=head2 bcc $address
+
+Adds a Bcc: header to the email
+
+=head2 subject $text
+
+Adds a subject to the email
+
+=head2 text_body $body [, $header => $value, ... ]
+
+Sets the text body of the email. Unless specified, all the appropriate
+headers are set for you. You may override any as needed. See
+L<Email::MIME> for the actual headers to use.
+
+If C<$body> is undefined, this method will do nothing.
+
+=head2 html_body $body [, $header => $value, ... ]
+
+Set the HTML body of the email. Unless specified, all the appropriate
+headers are set for you. You may override any as needed. See
+L<Email::MIME> for the actual headers to use.
+
+If C<$body> is undefined, this method will do nothing.
+
+=head2 attach $contents [, $header => $value, ... ]
+
+Adds an attachment to the email. The first argument is the file contents
+followed by (as for text_body and html_body) the list of headers to use.
+Email::Stuffer should TRY to guess the headers right, but you may wish
+to provide them anyway to be sure. Encoding is Base64 by default.
+
+=head2 attach_file $file [, $header => $value, ... ]
+
+Attachs a file that already exists on the filesystem to the email. 
+C<attach_file> will auto-detect the MIME type, and use the file's
+current name when attaching.
+
+=head2 transport
+
+  $stuffer->transport( $moniker, @options )
+
+or
+
+  $stuffer->transport( $transport_obj )
+
+The C<transport> method specifies the L<Email::Sender> transport that
+you want to use to send the email, and any options that need to be
+used to instantiate the transport.  C<$moniker> is used as the transport
+name; if it starts with an equals sign (C<=>) then the text after the
+sign is used as the class.  Otherwise, the text is prepended by
+C<Email::Sender::Transport::>.  In neither case will a module be
+automatically loaded.
+
+Alternatively, you can pass a complete transport object (which must be
+an L<Email::Sender::Transport> object) and it will be used as is.
+
+=head2 email
+
+Creates and returns the full L<Email::MIME> object for the email.
+
+=head2 as_string
+
+Returns the string form of the email. Identical to (and uses behind the
+scenes) Email::MIME-E<gt>as_string.
+
+=head2 send
+
+Sends the email via L<Email::Sender::Simple>.
+
+On failure, returns false.
+
+=head2 send_or_die
+
+Sends the email via L<Email::Sender::Simple>.
+
+On failure, throws an exception.
+
 =head1 COOKBOOK
 
 Here is another example (maybe plural later) of how you can use
@@ -161,502 +619,47 @@ However, please note that C<send>, and the group of methods that do not
 change the Email::Stuffer object B<do not> return the object, and thus
 B<are not> chainable.
 
-=cut
-
-use 5.005;
-use strict;
-use Carp                   ();
-use File::Basename         ();
-use Params::Util 1.05      qw(_INSTANCE _INSTANCEDOES);
-use Email::MIME            ();
-use Email::MIME::Creator   ();
-use Email::Sender::Simple  ();
-use prefork 'File::Type';
-
-our $VERSION = '0.002';
-
-#####################################################################
-# Constructor and Accessors
-
-=head2 new
-
-Creates a new, empty, Email::Stuffer object.
-
-=cut
-
-sub new {
-	my $class = ref $_[0] || $_[0];
-
-	my $self = bless {
-		parts      => [],
-		email      => Email::MIME->create(
-			header => [],
-			parts  => [],
-			),
-		}, $class;
-
-	$self;
-}
-
-sub _self {
-	my $either = shift;
-	ref($either) ? $either : $either->new;
-}
-
-=head2 header_names
-
-Returns, as a list, all of the headers currently set for the Email
-For backwards compatibility, this method can also be called as B[headers].
-
-=cut
-
-sub header_names {
-	shift()->{email}->header_names;
-}
-
-sub headers {
-	shift()->{email}->header_names; ## This is now header_names, headers is depreciated
-}
-
-=head2 parts
-
-Returns, as a list, the L<Email::MIME> parts for the Email
-
-=cut
-
-sub parts {
-	grep { defined $_ } @{shift()->{parts}};
-}
-
-
-
-
-
-#####################################################################
-# Header Methods
-
-=head2 header $header => $value
-
-Adds a single named header to the email. Note I said B<add> not set,
-so you can just keep shoving the headers on. But of course, if you
-want to use to overwrite a header, you're stuffed. Because B<this module
-is not for changing emails, just throwing stuff together and sending it.>
-
-=cut
-
-sub header {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(ucfirst shift, shift) ? $self : undef;
-}
-
-=head2 to $address
-
-Adds a To: header to the email
-
-=cut
-
-sub to {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(To => shift) ? $self : undef;
-}
-
-=head2 from $address
-
-Adds (yes ADDS, you only do it once) a From: header to the email
-
-=cut
-
-sub from {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(From => shift) ? $self : undef;
-}
-
-=head2 cc $address
-
-Adds a Cc: header to the email
-
-=cut
-
-sub cc {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(Cc => shift) ? $self : undef;
-}
-
-=head2 bcc $address
-
-Adds a Bcc: header to the email
-
-=cut
-
-sub bcc {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(Bcc => shift) ? $self : undef;
-}
-
-=head2 subject $text
-
-Adds a subject to the email
-
-=cut
-
-sub subject {
-	my $self = shift()->_self;
-	$self->{email}->header_str_set(Subject => shift) ? $self : undef;
-}
-
-#####################################################################
-# Body and Attachments
-
-=head2 text_body $body [, $header => $value, ... ]
-
-Sets the text body of the email. Unless specified, all the appropriate
-headers are set for you. You may override any as needed. See
-L<Email::MIME> for the actual headers to use.
-
-If C<$body> is undefined, this method will do nothing.
-
-=cut
-
-sub text_body {
-	my $self = shift()->_self;
-	my $body = defined $_[0] ? shift : return $self;
-	my %attr = (
-		# Defaults
-		content_type => 'text/plain',
-		charset      => 'utf-8',
-		encoding     => 'quoted-printable',
-		format       => 'flowed',
-		# Params overwrite them
-		@_,
-		);
-
-	# Create the part in the text slot
-	$self->{parts}->[0] = Email::MIME->create(
-		attributes => \%attr,
-		body_str   => $body,
-		);
-
-	$self;
-}
-
-=head2 html_body $body [, $header => $value, ... ]
-
-Set the HTML body of the email. Unless specified, all the appropriate
-headers are set for you. You may override any as needed. See
-L<Email::MIME> for the actual headers to use.
-
-If C<$body> is undefined, this method will do nothing.
-
-=cut
-
-sub html_body {
-	my $self = shift()->_self;
-	my $body = defined $_[0] ? shift : return $self;
-	my %attr = (
-		# Defaults
-		content_type => 'text/html',
-		charset      => 'utf-8',
-		encoding     => 'quoted-printable',
-		# Params overwrite them
-		@_,
-		);
-
-	# Create the part in the HTML slot
-	$self->{parts}->[1] = Email::MIME->create(
-		attributes => \%attr,
-		body_str   => $body,
-		);
-
-	$self;
-}
-
-=head2 attach $contents [, $header => $value, ... ]
-
-Adds an attachment to the email. The first argument is the file contents
-followed by (as for text_body and html_body) the list of headers to use.
-Email::Stuffer should TRY to guess the headers right, but you may wish
-to provide them anyway to be sure. Encoding is Base64 by default.
-
-=cut
-
-sub attach {
-	my $self = shift()->_self;
-	my $body = defined $_[0] ? shift : return undef;
-	my %attr = (
-		# Cheap defaults
-		encoding => 'base64',
-		# Params overwrite them
-		@_,
-		);
-
-	# The more expensive defaults if needed
-	unless ( $attr{content_type} ) {
-		require File::Type;
-		$attr{content_type} = File::Type->checktype_contents($body);
-	}
-
-	### MORE?
-
-	# Determine the slot to put it at
-	my $slot = scalar @{$self->{parts}};
-	$slot = 3 if $slot < 3;
-
-	# Create the part in the attachment slot
-	$self->{parts}->[$slot] = Email::MIME->create(
-		attributes => \%attr,
-		body       => $body,
-		);
-
-	$self;
-}
-
-=head2 attach_file $file [, $header => $value, ... ]
-
-Attachs a file that already exists on the filesystem to the email. 
-C<attach_file> will auto-detect the MIME type, and use the file's
-current name when attaching.
-
-=cut
-
-sub attach_file {
-	my $self = shift;
-  my $body_arg = shift;
-	my $name = undef;
-	my $body = undef;
-
-	# Support IO::All::File arguments
-	if ( Params::Util::_INSTANCE($body_arg, 'IO::All::File') ) {
-		$name = $body_arg->name;
-		$body = $body_arg->all;
-
-	# Support file names
-	} elsif ( defined $body_arg and -f $body_arg ) {
-		$name = $body_arg;
-		$body = _slurp( $body_arg ) or return undef;
-
-	# That's it
-	} else {
-		return undef;
-	}
-
-	# Clean the file name
-	$name = File::Basename::basename($name) or return undef;
-
-	# Now attach as normal
-	$self->attach( $body, name => $name, filename => $name, @_ );
-}
-
-# Provide a simple _slurp implementation
-sub _slurp {
-	my $file = shift;
-	local $/ = undef;
-	local *SLURP;
-	open( SLURP, "<$file" ) or return undef;
-	my $source = <SLURP>;
-	close( SLURP ) or return undef;
-	\$source;
-}
-
-=head2 transport
-
-  $stuffer->transport( $moniker, @options )
-
-or
-
-  $stuffer->transport( $transport_obj )
-
-The C<transport> method specifies the L<Email::Sender> transport that
-you want to use to send the email, and any options that need to be
-used to instantiate the transport.  C<$moniker> is used as the transport
-name; if it starts with an equals sign (C<=>) then the text after the
-sign is used as the class.  Otherwise, the text is prepended by
-C<Email::Sender::Transport::>.  In neither case will a module be
-automatically loaded.
-
-Alternatively, you can pass a complete transport object (which must be
-an L<Email::Send> object) and it will be used as is.
-
-=cut
-
-sub transport {
-	my $self = shift;
-
-	if ( @_ ) {
-		# Change the transport
-		if ( _INSTANCEDOES($_[0], 'Email::Sender::Transport') ) {
-			$self->{transport} = shift;
-		} else {
-		  my ($moniker, @arg) = @_;
-		  my $class = $moniker =~ s/\A=//
-		            ? $moniker
-		            : "Email::Sender::Transport::$moniker";
-			my $transport = $class->new(@arg);
-			$self->{transport} = $transport;
-		}
-	}
-
-	$self;
-}
-
-
-
-
-
-#####################################################################
-# Output Methods
-
-=head2 email
-
-Creates and returns the full L<Email::MIME> object for the email.
-
-=cut
-
-sub email {
-	my $self  = shift;
-	my @parts = $self->parts;
-
-        ### Lyle Hopkins, code added to Fix single part, and multipart/alternative problems
-        if ( scalar( @{ $self->{parts} } ) >= 3 ) {
-                ## multipart/mixed
-                $self->{email}->parts_set( \@parts );
-        }
-        ## Check we actually have any parts
-        elsif ( scalar( @{ $self->{parts} } ) ) {
-                if ( _INSTANCE($parts[0], 'Email::MIME') && _INSTANCE($parts[1], 'Email::MIME') ) {
-                        ## multipart/alternate
-                        $self->{email}->header_set( 'Content-Type' => 'multipart/alternative' );
-                        $self->{email}->parts_set( \@parts );
-                }
-                ## As @parts is $self->parts without the blanks, we only need check $parts[0]
-                elsif ( _INSTANCE($parts[0], 'Email::MIME') ) {
-                        ## single part text/plain
-                        _transfer_headers( $self->{email}, $parts[0] );
-                        $self->{email} = $parts[0];
-                }
-        }
-
-	$self->{email};
-}
-
-# Support coercion to an Email::MIME
-sub __as_Email_MIME { shift()->email }
-
-# Quick any routine
-sub _any (&@) {
-        my $f = shift;
-        return if ! @_;
-        for (@_) {
-                return 1 if $f->();
-        }
-        return 0;
-}
-
-# header transfer from one object to another
-sub _transfer_headers {
-        # $_[0] = from, $_[1] = to
-        my @headers_move = $_[0]->header_names;
-        my @headers_skip = $_[1]->header_names;
-        foreach my $header_name (@headers_move) {
-                next if _any { $_ eq $header_name } @headers_skip;
-                my @values = $_[0]->header($header_name);
-                $_[1]->header_str_set( $header_name, @values );
-        }
-}
-
-=head2 as_string
-
-Returns the string form of the email. Identical to (and uses behind the
-scenes) Email::MIME-E<gt>as_string.
-
-=cut
-
-sub as_string {
-	shift()->email->as_string;
-}
-
-=head2 send
-
-Sends the email via L<Email::Sender::Simple>.
-
-On failure, returns false.
-
-=cut
-
-sub send {
-	my $self = shift;
-	my $arg  = shift;
-	my $email = $self->email or return undef;
-
-	my $transport = $self->{transport};
-
-	Email::Sender::Simple->try_to_send(
-	  $email,
-	  {
-      ($transport ? (transport => $transport) : ()),
-      $arg ? %$arg : (),
-    },
-  );
-}
-
-=head2 send_or_die
-
-Sends the email via L<Email::Sender::Simple>.
-
-On failure, throws an exception.
-
-=cut
-
-sub send {
-	my $self = shift;
-	my $arg  = shift;
-	my $email = $self->email or return undef;
-
-	my $transport = $self->{transport};
-
-	Email::Sender::Simple->send(
-	  $email,
-	  {
-      ($transport ? (transport => $transport) : ()),
-      $arg ? %$arg : (),
-    },
-  );
-}
-
-
-
-1;
-
 =head1 TO DO
 
 =over 4
 
-=item * Fix a number of bugs still likely to exist
+=item *
 
-=item * Write more tests.
+Fix a number of bugs still likely to exist
 
-=item * Add any additional small bit of automation that arn't too expensive
+=item *
+
+Write more tests.
+
+=item *
+
+Add any additional small bit of automation that isn't too expensive
 
 =back
-
-=head1 AUTHORS
-
-B<Current maintainer>: Ricardo Signes C<rjbs@cpan.org>
-
-Adam Kennedy E<lt>adamk@cpan.orgE<gt> wrote L<Email::Stuff>, from which the
-great majority of the L<Email::Stuffer> code is taken, whole cloth.
 
 =head1 SEE ALSO
 
 L<Email::MIME>, L<Email::Sender>, L<http://ali.as/>
 
-=head1 COPYRIGHT
+=head1 AUTHORS
 
-Copyright 2004 - 2013 Adam Kennedy.
+=over 4
 
-This program is free software; you can redistribute
-it and/or modify it under the same terms as Perl itself.
+=item *
 
-The full text of the license can be found in the
-LICENSE file included with this module.
+Adam Kennedy <adamk@cpan.org>
+
+=item *
+
+Ricardo SIGNES <rjbs@cpan.org>
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2004 by Adam Kennedy and Ricardo SIGNES.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut

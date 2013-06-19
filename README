@@ -1,3 +1,13 @@
 
-For documentation on Email-Stuffer, consult the POD.
+
+This archive contains the distribution Email-Stuffer,
+version 0.003:
+
+  A more casual approach to creating and sending Email:: emails
+
+This software is copyright (c) 2004 by Adam Kennedy and Ricardo SIGNES.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
 
