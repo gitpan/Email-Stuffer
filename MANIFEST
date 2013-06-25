@@ -11,8 +11,11 @@ t/00-compile.t
 t/000-report-versions-tiny.t
 t/alternative.t
 t/basic.t
+t/content_type.t
 t/data/body.html
 t/data/paypal.gif
+t/data/paypal.jpg
+t/data/paypal.png
 t/send-or-die.t
 t/singlepart.t
 xt/release/changes_has_content.t

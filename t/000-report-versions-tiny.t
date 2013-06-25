@@ -58,13 +58,12 @@ eval { $v .= pmver('File::Basename','any version') };
 eval { $v .= pmver('File::Find','any version') };
 eval { $v .= pmver('File::Spec::Functions','any version') };
 eval { $v .= pmver('File::Temp','any version') };
-eval { $v .= pmver('File::Type','any version') };
 eval { $v .= pmver('Moo','any version') };
 eval { $v .= pmver('Params::Util','any version') };
 eval { $v .= pmver('Test::More','0.96') };
 eval { $v .= pmver('Test::Pod','1.41') };
-eval { $v .= pmver('prefork','any version') };
 eval { $v .= pmver('strict','any version') };
+eval { $v .= pmver('utf8','any version') };
 eval { $v .= pmver('version','0.9901') };
 eval { $v .= pmver('warnings','any version') };
 
