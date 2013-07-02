@@ -1,6 +1,9 @@
 use strict;
 use warnings;
 package Email::Stuffer;
+{
+  $Email::Stuffer::VERSION = '0.006';
+}
 # ABSTRACT: A more casual approach to creating and sending Email:: emails
 
 
@@ -12,8 +15,6 @@ use Params::Util 1.05      qw(_INSTANCE _INSTANCEDOES);
 use Email::MIME            ();
 use Email::MIME::Creator   ();
 use Email::Sender::Simple  ();
-
-our $VERSION = '0.001';
 
 #####################################################################
 # Constructor and Accessors
@@ -380,7 +381,7 @@ Email::Stuffer - A more casual approach to creating and sending Email:: emails
 
 =head1 VERSION
 
-version 0.005
+version 0.006
 
 =head1 SYNOPSIS
 

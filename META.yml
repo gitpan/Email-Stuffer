@@ -34,7 +34,7 @@ resources:
   bugtracker: https://github.com/rjbs/Email-Stuffer/issues
   homepage: https://github.com/rjbs/Email-Stuffer
   repository: https://github.com/rjbs/Email-Stuffer.git
-version: 0.005
+version: 0.006
 x_Dist_Zilla:
   perl:
     version: 5.019001
