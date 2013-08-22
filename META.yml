@@ -4,17 +4,17 @@ author:
   - 'Adam Kennedy <adamk@cpan.org>'
   - 'Ricardo SIGNES <rjbs@cpan.org>'
 build_requires:
+  Capture::Tiny: 0
   Email::Sender::Transport::Test: 0
-  File::Find: 0
   File::Spec::Functions: 0
-  File::Temp: 0
   Moo: 0
   Test::More: 0.96
+  blib: 0
   utf8: 0
 configure_requires:
   ExtUtils::MakeMaker: 6.30
 dynamic_config: 0
-generated_by: 'Dist::Zilla version 4.300036, CPAN::Meta::Converter version 2.131560'
+generated_by: 'Dist::Zilla version 4.300036, CPAN::Meta::Converter version 2.132140'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -34,10 +34,10 @@ resources:
   bugtracker: https://github.com/rjbs/Email-Stuffer/issues
   homepage: https://github.com/rjbs/Email-Stuffer
   repository: https://github.com/rjbs/Email-Stuffer.git
-version: 0.006
+version: 0.007
 x_Dist_Zilla:
   perl:
-    version: 5.019001
+    version: 5.019002
   plugins:
     -
       class: Dist::Zilla::Plugin::Git::GatherDir
@@ -133,12 +133,18 @@ x_Dist_Zilla:
       version: 4.300036
     -
       class: Dist::Zilla::Plugin::Test::Compile
+      config:
+        Dist::Zilla::Plugin::Test::Compile:
+          module_finder:
+            - ':InstallModules'
+          script_finder:
+            - ':ExecFiles'
       name: '@RJBS/Test::Compile'
-      version: 2.002
+      version: 2.018
     -
       class: Dist::Zilla::Plugin::ReportVersions::Tiny
       name: '@RJBS/ReportVersions::Tiny'
-      version: 1.08
+      version: 1.09
     -
       class: Dist::Zilla::Plugin::Prereqs
       config:
@@ -150,11 +156,11 @@ x_Dist_Zilla:
     -
       class: Dist::Zilla::Plugin::PodWeaver
       name: '@RJBS/PodWeaver'
-      version: 3.101641
+      version: 3.101642
     -
       class: Dist::Zilla::Plugin::GithubMeta
       name: '@RJBS/GithubMeta'
-      version: 0.28
+      version: 0.30
     -
       class: Dist::Zilla::Plugin::Git::Check
       name: '@RJBS/@Git/Check'

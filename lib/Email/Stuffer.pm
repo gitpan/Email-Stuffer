@@ -2,7 +2,7 @@ use strict;
 use warnings;
 package Email::Stuffer;
 {
-  $Email::Stuffer::VERSION = '0.006';
+  $Email::Stuffer::VERSION = '0.007';
 }
 # ABSTRACT: A more casual approach to creating and sending Email:: emails
 
@@ -69,7 +69,7 @@ sub header {
 
 sub to {
 	my $self = shift()->_self;
-	$self->{email}->header_str_set(To => shift) ? $self : undef;
+	$self->{email}->header_str_set(To => join(q{, }, @_)) ? $self : undef;
 }
 
 
@@ -81,13 +81,13 @@ sub from {
 
 sub cc {
 	my $self = shift()->_self;
-	$self->{email}->header_str_set(Cc => shift) ? $self : undef;
+	$self->{email}->header_str_set(Cc => join(q{, }, @_)) ? $self : undef;
 }
 
 
 sub bcc {
 	my $self = shift()->_self;
-	$self->{email}->header_str_set(Bcc => shift) ? $self : undef;
+	$self->{email}->header_str_set(Bcc => join(q{, }, @_)) ? $self : undef;
 }
 
 
@@ -381,7 +381,7 @@ Email::Stuffer - A more casual approach to creating and sending Email:: emails
 
 =head1 VERSION
 
-version 0.006
+version 0.007
 
 =head1 SYNOPSIS
 
