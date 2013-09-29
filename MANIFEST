@@ -16,7 +16,9 @@ t/data/body.html
 t/data/paypal.gif
 t/data/paypal.jpg
 t/data/paypal.png
+t/header_to_or_replace.t
 t/send-or-die.t
+t/set-empty-subject.t
 t/singlepart.t
 xt/release/changes_has_content.t
 xt/release/pod-syntax.t

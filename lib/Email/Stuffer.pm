@@ -2,7 +2,7 @@ use strict;
 use warnings;
 package Email::Stuffer;
 {
-  $Email::Stuffer::VERSION = '0.007';
+  $Email::Stuffer::VERSION = '0.008';
 }
 # ABSTRACT: A more casual approach to creating and sending Email:: emails
 
@@ -63,7 +63,9 @@ sub parts {
 
 sub header {
 	my $self = shift()->_self;
-	$self->{email}->header_str_set(ucfirst shift, shift) ? $self : undef;
+	return unless @_;
+	$self->{email}->header_str_set(ucfirst shift, shift);
+	return $self;
 }
 
 
@@ -381,7 +383,7 @@ Email::Stuffer - A more casual approach to creating and sending Email:: emails
 
 =head1 VERSION
 
-version 0.007
+version 0.008
 
 =head1 SYNOPSIS
 
@@ -516,30 +518,28 @@ Returns, as a list, the L<Email::MIME> parts for the Email
 
 =head2 header $header => $value
 
-Adds a single named header to the email. Note I said B<add> not set,
-so you can just keep shoving the headers on. But of course, if you
-want to use to overwrite a header, you're stuffed. Because B<this module
-is not for changing emails, just throwing stuff together and sending it.>
+Sets a named header in the email. Multiple calls with the same $header
+will overwrite previous calls $value.
 
 =head2 to $address
 
-Adds a To: header to the email
+Sets the To: header in the email
 
 =head2 from $address
 
-Adds (yes ADDS, you only do it once) a From: header to the email
+Sets the From: header in the email
 
 =head2 cc $address
 
-Adds a Cc: header to the email
+Sets the Cc: header in the email
 
 =head2 bcc $address
 
-Adds a Bcc: header to the email
+Sets the Bcc: header in the email
 
 =head2 subject $text
 
-Adds a subject to the email
+Sets the Subject: header in the email
 
 =head2 text_body $body [, $header => $value, ... ]
 

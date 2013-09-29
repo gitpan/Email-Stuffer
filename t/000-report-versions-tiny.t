@@ -48,7 +48,6 @@ sub pmver {
     return sprintf('%-45s => %-10s%-15s%s', $module, $pmver, $wanted, "\n");
 }
 
-eval { $v .= pmver('Capture::Tiny','any version') };
 eval { $v .= pmver('Carp','any version') };
 eval { $v .= pmver('Email::MIME','any version') };
 eval { $v .= pmver('Email::MIME::Creator','any version') };
@@ -56,12 +55,15 @@ eval { $v .= pmver('Email::Sender::Simple','any version') };
 eval { $v .= pmver('Email::Sender::Transport::Test','any version') };
 eval { $v .= pmver('ExtUtils::MakeMaker','6.30') };
 eval { $v .= pmver('File::Basename','any version') };
+eval { $v .= pmver('File::Spec','any version') };
 eval { $v .= pmver('File::Spec::Functions','any version') };
+eval { $v .= pmver('IO::Handle','any version') };
+eval { $v .= pmver('IPC::Open3','any version') };
 eval { $v .= pmver('Moo','any version') };
 eval { $v .= pmver('Params::Util','1.05') };
 eval { $v .= pmver('Test::More','0.96') };
+eval { $v .= pmver('Test::Most','any version') };
 eval { $v .= pmver('Test::Pod','1.41') };
-eval { $v .= pmver('blib','any version') };
 eval { $v .= pmver('strict','any version') };
 eval { $v .= pmver('utf8','any version') };
 eval { $v .= pmver('version','0.9901') };
