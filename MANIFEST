@@ -7,7 +7,6 @@ Makefile.PL
 README
 dist.ini
 lib/Email/Stuffer.pm
-t/00-compile.t
 t/000-report-versions-tiny.t
 t/alternative.t
 t/basic.t

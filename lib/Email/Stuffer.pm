@@ -2,7 +2,7 @@ use strict;
 use warnings;
 package Email::Stuffer;
 {
-  $Email::Stuffer::VERSION = '0.008';
+  $Email::Stuffer::VERSION = '0.009';
 }
 # ABSTRACT: A more casual approach to creating and sending Email:: emails
 
@@ -377,13 +377,15 @@ __END__
 
 =pod
 
+=encoding UTF-8
+
 =head1 NAME
 
 Email::Stuffer - A more casual approach to creating and sending Email:: emails
 
 =head1 VERSION
 
-version 0.008
+version 0.009
 
 =head1 SYNOPSIS
 
