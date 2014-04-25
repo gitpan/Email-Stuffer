@@ -1,15 +1,169 @@
 use strict;
 use warnings;
 package Email::Stuffer;
-{
-  $Email::Stuffer::VERSION = '0.009';
-}
 # ABSTRACT: A more casual approach to creating and sending Email:: emails
-
+$Email::Stuffer::VERSION = '0.010'; # TRIAL
+#pod =head1 SYNOPSIS
+#pod
+#pod   # Prepare the message
+#pod   my $body = <<'AMBUSH_READY';
+#pod   Dear Santa
+#pod   
+#pod   I have killed Bun Bun.
+#pod   
+#pod   Yes, I know what you are thinking... but it was actually a total accident.
+#pod   
+#pod   I was in a crowded line at a BayWatch signing, and I tripped, and stood on
+#pod   his head.
+#pod   
+#pod   I know. Oops! :/
+#pod   
+#pod   So anyways, I am willing to sell you the body for $1 million dollars.
+#pod   
+#pod   Be near the pinhole to the Dimension of Pain at midnight.
+#pod   
+#pod   Alias
+#pod
+#pod   AMBUSH_READY
+#pod   
+#pod   # Create and send the email in one shot
+#pod   Email::Stuffer->from     ('cpan@ali.as'             )
+#pod                 ->to       ('santa@northpole.org'     )
+#pod                 ->bcc      ('bunbun@sluggy.com'       )
+#pod                 ->text_body($body                     )
+#pod                 ->attach_file('dead_bunbun_faked.gif' )
+#pod                 ->send;
+#pod
+#pod =head1 DESCRIPTION
+#pod
+#pod B<The basics should all work, but this module is still subject to
+#pod name and/or API changes>
+#pod
+#pod Email::Stuffer, as its name suggests, is a fairly casual module used
+#pod to stuff things into an email and send them. It is a high-level module
+#pod designed for ease of use when doing a very specific common task, but
+#pod implemented on top of the light and tolerable Email:: modules.
+#pod
+#pod Email::Stuffer is typically used to build emails and send them in a single
+#pod statement, as seen in the synopsis. And it is certain only for use when
+#pod creating and sending emails. As such, it contains no email parsing
+#pod capability, and little to no modification support.
+#pod
+#pod To re-iterate, this is very much a module for those "slap it together and
+#pod fire it off" situations, but that still has enough grunt behind the scenes
+#pod to do things properly.
+#pod
+#pod =head2 Default Transport
+#pod
+#pod Although it cannot be relied upon to work, the default behaviour is to
+#pod use C<sendmail> to send mail, if you don't provide the mail send channel
+#pod with either the C<transport> method, or as an argument to C<send>.
+#pod
+#pod (Actually, the choice of default is delegated to
+#pod L<Email::Sender::Simple>, which makes its own choices.  But usually, it
+#pod uses C<sendmail>.)
+#pod
+#pod =head2 Why use this?
+#pod
+#pod Why not just use L<Email::Simple> or L<Email::MIME>? After all, this just adds
+#pod another layer of stuff around those. Wouldn't using them directly be better?
+#pod
+#pod Certainly, if you know EXACTLY what you are doing. The docs are clear enough,
+#pod but you really do need to have an understanding of the structure of MIME
+#pod emails. This structure is going to be different depending on whether you have
+#pod text body, HTML, both, with or without an attachment etc.
+#pod
+#pod Then there's brevity... compare the following roughly equivalent code.
+#pod
+#pod First, the Email::Stuffer way.
+#pod
+#pod   Email::Stuffer->to('Simon Cozens<simon@somewhere.jp>')
+#pod                 ->from('Santa@northpole.org')
+#pod                 ->text_body("You've been good this year. No coal for you.")
+#pod                 ->attach_file('choochoo.gif')
+#pod                 ->send;
+#pod
+#pod And now doing it directly with a knowledge of what your attachment is, and
+#pod what the correct MIME structure is.
+#pod
+#pod   use Email::MIME;
+#pod   use Email::Sender::Simple;
+#pod   use IO::All;
+#pod   
+#pod   Email::Sender::Simple->try_to_send(
+#pod     Email::MIME->create(
+#pod       header => [
+#pod           To => 'simon@somewhere.jp',
+#pod           From => 'santa@northpole.org',
+#pod       ],
+#pod       parts => [
+#pod           Email::MIME->create(
+#pod             body => "You've been a good boy this year. No coal for you."
+#pod           ),
+#pod           Email::MIME->create(
+#pod             body => io('choochoo.gif'),
+#pod             attributes => {
+#pod                 filename => 'choochoo.gif',
+#pod                 content_type => 'image/gif',
+#pod             },
+#pod          ),
+#pod       ],
+#pod     );
+#pod   );
+#pod
+#pod Again, if you know MIME well, and have the patience to manually code up
+#pod the L<Email::MIME> structure, go do that, if you really want to.
+#pod
+#pod Email::Stuffer as the name suggests, solves one case and one case only:
+#pod generate some stuff, and email it to somewhere, as conveniently as
+#pod possible. DWIM, but do it as thinly as possible and use the solid
+#pod Email:: modules underneath.
+#pod
+#pod =head1 COOKBOOK
+#pod
+#pod Here is another example (maybe plural later) of how you can use
+#pod Email::Stuffer's brevity to your advantage.
+#pod
+#pod =head2 Custom Alerts
+#pod
+#pod   package SMS::Alert;
+#pod   use base 'Email::Stuffer';
+#pod   
+#pod   sub new {
+#pod     shift()->SUPER::new(@_)
+#pod            ->from('monitor@my.website')
+#pod            # Of course, we could have pulled these from
+#pod            # $MyConfig->{support_tech} or something similar.
+#pod            ->to('0416181595@sms.gateway')
+#pod            ->transport('SMTP', { host => '123.123.123.123' });
+#pod   }
+#pod
+#pod Z<>
+#pod
+#pod   package My::Code;
+#pod
+#pod   unless ( $Server->restart ) {
+#pod           # Notify the admin on call that a server went down and failed
+#pod           # to restart.
+#pod           SMS::Alert->subject("Server $Server failed to restart cleanly")
+#pod                     ->send;
+#pod   }
+#pod
+#pod =head1 METHODS
+#pod
+#pod As you can see from the synopsis, all methods that B<modify> the
+#pod Email::Stuffer object returns the object, and thus most normal calls are
+#pod chainable.
+#pod
+#pod However, please note that C<send>, and the group of methods that do not
+#pod change the Email::Stuffer object B<do not> return the object, and thus
+#pod B<are not> chainable.
+#pod
+#pod =cut
 
 use 5.005;
 use strict;
-use Carp                   ();
+use Carp                   qw(croak);
 use File::Basename         ();
 use Params::Util 1.05      qw(_INSTANCE _INSTANCEDOES);
 use Email::MIME            ();
@@ -19,6 +173,11 @@ use Email::Sender::Simple  ();
 #####################################################################
 # Constructor and Accessors
 
+#pod =method new
+#pod
+#pod Creates a new, empty, Email::Stuffer object.
+#pod
+#pod =cut
 
 sub new {
 	my $class = ref $_[0] || $_[0];
@@ -39,6 +198,12 @@ sub _self {
 	ref($either) ? $either : $either->new;
 }
 
+#pod =method header_names
+#pod
+#pod Returns, as a list, all of the headers currently set for the Email
+#pod For backwards compatibility, this method can also be called as B[headers].
+#pod
+#pod =cut
 
 sub header_names {
 	shift()->{email}->header_names;
@@ -48,18 +213,25 @@ sub headers {
 	shift()->{email}->header_names; ## This is now header_names, headers is depreciated
 }
 
+#pod =method parts
+#pod
+#pod Returns, as a list, the L<Email::MIME> parts for the Email
+#pod
+#pod =cut
 
 sub parts {
 	grep { defined $_ } @{shift()->{parts}};
 }
 
-
-
-
-
 #####################################################################
 # Header Methods
 
+#pod =method header $header => $value
+#pod
+#pod Sets a named header in the email. Multiple calls with the same $header
+#pod will overwrite previous calls $value.
+#pod
+#pod =cut
 
 sub header {
 	my $self = shift()->_self;
@@ -68,30 +240,55 @@ sub header {
 	return $self;
 }
 
+#pod =method to $address
+#pod
+#pod Sets the To: header in the email
+#pod
+#pod =cut
 
 sub to {
 	my $self = shift()->_self;
 	$self->{email}->header_str_set(To => join(q{, }, @_)) ? $self : undef;
 }
 
+#pod =method from $address
+#pod
+#pod Sets the From: header in the email
+#pod
+#pod =cut
 
 sub from {
 	my $self = shift()->_self;
 	$self->{email}->header_str_set(From => shift) ? $self : undef;
 }
 
+#pod =method cc $address
+#pod
+#pod Sets the Cc: header in the email
+#pod
+#pod =cut
 
 sub cc {
 	my $self = shift()->_self;
 	$self->{email}->header_str_set(Cc => join(q{, }, @_)) ? $self : undef;
 }
 
+#pod =method bcc $address
+#pod
+#pod Sets the Bcc: header in the email
+#pod
+#pod =cut
 
 sub bcc {
 	my $self = shift()->_self;
 	$self->{email}->header_str_set(Bcc => join(q{, }, @_)) ? $self : undef;
 }
 
+#pod =method subject $text
+#pod
+#pod Sets the Subject: header in the email
+#pod
+#pod =cut
 
 sub subject {
 	my $self = shift()->_self;
@@ -101,6 +298,15 @@ sub subject {
 #####################################################################
 # Body and Attachments
 
+#pod =method text_body $body [, $header => $value, ... ]
+#pod
+#pod Sets the text body of the email. Unless specified, all the appropriate
+#pod headers are set for you. You may override any as needed. See
+#pod L<Email::MIME> for the actual headers to use.
+#pod
+#pod If C<$body> is undefined, this method will do nothing.
+#pod
+#pod =cut
 
 sub text_body {
 	my $self = shift()->_self;
@@ -124,6 +330,15 @@ sub text_body {
 	$self;
 }
 
+#pod =method html_body $body [, $header => $value, ... ]
+#pod
+#pod Set the HTML body of the email. Unless specified, all the appropriate
+#pod headers are set for you. You may override any as needed. See
+#pod L<Email::MIME> for the actual headers to use.
+#pod
+#pod If C<$body> is undefined, this method will do nothing.
+#pod
+#pod =cut
 
 sub html_body {
 	my $self = shift()->_self;
@@ -146,6 +361,14 @@ sub html_body {
 	$self;
 }
 
+#pod =method attach $contents [, $header => $value, ... ]
+#pod
+#pod Adds an attachment to the email. The first argument is the file contents
+#pod followed by (as for text_body and html_body) the list of headers to use.
+#pod Email::Stuffer should TRY to guess the headers right, but you may wish
+#pod to provide them anyway to be sure. Encoding is Base64 by default.
+#pod
+#pod =cut
 
 sub _detect_content_type {
 	my ($filename, $body) = @_;
@@ -209,10 +432,17 @@ sub attach {
 	$self;
 }
 
+#pod =method attach_file $file [, $header => $value, ... ]
+#pod
+#pod Attachs a file that already exists on the filesystem to the email. 
+#pod C<attach_file> will auto-detect the MIME type, and use the file's
+#pod current name when attaching.
+#pod
+#pod =cut
 
 sub attach_file {
 	my $self = shift;
-  my $body_arg = shift;
+	my $body_arg = shift;
 	my $name = undef;
 	my $body = undef;
 
@@ -222,17 +452,21 @@ sub attach_file {
 		$body = $body_arg->all;
 
 	# Support file names
-	} elsif ( defined $body_arg and -f $body_arg ) {
+	} elsif ( defined $body_arg and Params::Util::_STRING($body_arg) ) {
+		croak "No such file '$body_arg'" unless -f $body_arg;
 		$name = $body_arg;
-		$body = _slurp( $body_arg ) or return undef;
+		$body = _slurp( $body_arg );
 
 	# That's it
 	} else {
-		return undef;
+		my $type = ref($body_arg) || "<$body_arg>";
+		croak "Expected a file name or an IO::All::File derivative, got $type";
 	}
 
 	# Clean the file name
-	$name = File::Basename::basename($name) or return undef;
+	$name = File::Basename::basename($name);
+
+	croak("basename somehow returned undef") unless defined $name;
 
 	# Now attach as normal
 	$self->attach( $body, name => $name, filename => $name, @_ );
@@ -242,13 +476,33 @@ sub attach_file {
 sub _slurp {
 	my $file = shift;
 	local $/ = undef;
-	local *SLURP;
-	open( SLURP, "<$file" ) or return undef;
-	my $source = <SLURP>;
-	close( SLURP ) or return undef;
+
+	open my $slurp, '<:raw', $file or croak("error opening $file: $!");
+	my $source = <$slurp>;
+	close( $slurp ) or croak "error after slurping $file: $!";
 	\$source;
 }
 
+#pod =method transport
+#pod
+#pod   $stuffer->transport( $moniker, @options )
+#pod
+#pod or
+#pod
+#pod   $stuffer->transport( $transport_obj )
+#pod
+#pod The C<transport> method specifies the L<Email::Sender> transport that
+#pod you want to use to send the email, and any options that need to be
+#pod used to instantiate the transport.  C<$moniker> is used as the transport
+#pod name; if it starts with an equals sign (C<=>) then the text after the
+#pod sign is used as the class.  Otherwise, the text is prepended by
+#pod C<Email::Sender::Transport::>.  In neither case will a module be
+#pod automatically loaded.
+#pod
+#pod Alternatively, you can pass a complete transport object (which must be
+#pod an L<Email::Sender::Transport> object) and it will be used as is.
+#pod
+#pod =cut
 
 sub transport {
 	my $self = shift;
@@ -270,13 +524,14 @@ sub transport {
 	$self;
 }
 
-
-
-
-
 #####################################################################
 # Output Methods
 
+#pod =method email
+#pod
+#pod Creates and returns the full L<Email::MIME> object for the email.
+#pod
+#pod =cut
 
 sub email {
 	my $self  = shift;
@@ -330,11 +585,24 @@ sub _transfer_headers {
         }
 }
 
+#pod =method as_string
+#pod
+#pod Returns the string form of the email. Identical to (and uses behind the
+#pod scenes) Email::MIME-E<gt>as_string.
+#pod
+#pod =cut
 
 sub as_string {
 	shift()->email->as_string;
 }
 
+#pod =method send
+#pod
+#pod Sends the email via L<Email::Sender::Simple>.
+#pod
+#pod On failure, returns false.
+#pod
+#pod =cut
 
 sub send {
 	my $self = shift;
@@ -352,6 +620,13 @@ sub send {
   );
 }
 
+#pod =method send_or_die
+#pod
+#pod Sends the email via L<Email::Sender::Simple>.
+#pod
+#pod On failure, throws an exception.
+#pod
+#pod =cut
 
 sub send_or_die {
 	my $self = shift;
@@ -369,9 +644,20 @@ sub send_or_die {
   );
 }
 
-
-
 1;
+
+#pod =head1 TO DO
+#pod
+#pod =for :list
+#pod * Fix a number of bugs still likely to exist
+#pod * Write more tests.
+#pod * Add any additional small bit of automation that isn't too expensive
+#pod
+#pod =head1 SEE ALSO
+#pod
+#pod L<Email::MIME>, L<Email::Sender>, L<http://ali.as/>
+#pod
+#pod =cut
 
 __END__
 
@@ -385,7 +671,7 @@ Email::Stuffer - A more casual approach to creating and sending Email:: emails
 
 =head1 VERSION
 
-version 0.009
+version 0.010
 
 =head1 SYNOPSIS
 
@@ -411,11 +697,11 @@ version 0.009
   AMBUSH_READY
   
   # Create and send the email in one shot
-  Email::Stuffer->from     ('cpan@ali.as'                      )
-                ->to       ('santa@northpole.org'              )
-                ->bcc      ('bunbun@sluggy.com'                )
-                ->text_body($body                              )
-                ->attach_file('dead_bunbun_faked.gif'		   )
+  Email::Stuffer->from     ('cpan@ali.as'             )
+                ->to       ('santa@northpole.org'     )
+                ->bcc      ('bunbun@sluggy.com'       )
+                ->text_body($body                     )
+                ->attach_file('dead_bunbun_faked.gif' )
                 ->send;
 
 =head1 DESCRIPTION

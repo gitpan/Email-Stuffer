@@ -58,6 +58,7 @@ eval { $v .= pmver('File::Basename','any version') };
 eval { $v .= pmver('File::Spec::Functions','any version') };
 eval { $v .= pmver('Moo','any version') };
 eval { $v .= pmver('Params::Util','1.05') };
+eval { $v .= pmver('Test::Fatal','any version') };
 eval { $v .= pmver('Test::More','0.96') };
 eval { $v .= pmver('Test::Most','any version') };
 eval { $v .= pmver('strict','any version') };
